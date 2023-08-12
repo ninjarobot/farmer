@@ -41,6 +41,10 @@ type RSBGPConnectionBuilder() =
 
 let routeServerBGPConnection = RSBGPConnectionBuilder()
 
+type GenerateOrLinkSubnet =
+    | AutoGenerate of VirtualNetwork:LinkedResource option * SubnetPrefix:IPAddressCidr option
+    | LinkedSubnet of Subnet:LinkedResource
+
 type RouteServerConfig =
     {
         Name: ResourceName
@@ -48,20 +52,58 @@ type RouteServerConfig =
         AllowBranchToBranchTraffic: FeatureFlag option
         HubRoutingPreference: HubRoutingPreference option
         BGPConnections: RSBGPConnectionConfig list
-        VirtualNetwork: LinkedResource option
-        SubnetPrefix: IPAddressCidr
+        SubnetScenario: GenerateOrLinkSubnet option
+        Dependencies: Set<ResourceId>
         Tags: Map<string, string>
     }
-
+    member private this.generateAnySubnetResources() : List<IArmResource> =
+        match this.SubnetScenario with
+        | None ->
+            raiseFarmer "Must link to a subnet with 'link_to_subnet' or link to vnet with 'link_to_vnet' to generate a subnet."
+        | Some(AutoGenerate(None, Some(_))) ->
+            raiseFarmer "Must link to a vnet with 'link_to_vnet' when specifying a 'subnet_prefix'."
+        | Some(AutoGenerate(_, None)) ->
+            raiseFarmer "Must specify a 'subnet_prefix' when linking to a vnet with 'link_to_vnet'."
+        | Some(AutoGenerate(Some(linkedVnet), Some(cidr))) ->
+            let subnetId = {linkedVnet.ResourceId with Type = subnets; Segments = [ResourceName "RouteServerSubnet"] }
+            [
+                // subnet
+                {
+                    Subnet.Name = ResourceName "RouteServerSubnet"
+                    Prefix = IPAddressCidr.format cidr
+                    VirtualNetwork = Some(linkedVnet)
+                    NetworkSecurityGroup = None
+                    Delegations = []
+                    NatGateway = None
+                    ServiceEndpoints = []
+                    AssociatedServiceEndpointPolicies = []
+                    PrivateEndpointNetworkPolicies = None
+                    PrivateLinkServiceNetworkPolicies = None
+                }
+                // ip configuration
+                {
+                    RouteServerIPConfig.Name = ResourceName $"{this.Name.Value}-ipconfig"
+                    RouteServer = Managed(routeServers.resourceId this.Name)
+                    PublicIpAddress = LinkedResource.Managed(publicIPAddresses.resourceId $"{this.Name.Value}-publicip")
+                    SubnetId = LinkedResource.Managed(subnetId)
+                }
+            ]
+        | Some(LinkedSubnet(linkedSubnet)) ->
+            [
+                //ip configuration
+                {
+                    RouteServerIPConfig.Name = ResourceName $"{this.Name.Value}-ipconfig"
+                    RouteServer = Managed(routeServers.resourceId this.Name)
+                    PublicIpAddress = LinkedResource.Managed(publicIPAddresses.resourceId $"{this.Name.Value}-publicip")
+                    SubnetId = linkedSubnet
+                }
+            ]
     interface IBuilder with
         member this.ResourceId = routeServers.resourceId this.Name
 
         member this.BuildResources location =
+            this.generateAnySubnetResources() @
             [
-                let vnetId =
-                    this.VirtualNetwork
-                    |> Option.defaultWith (fun _ -> raiseFarmer "Must set 'vnet' for route server")
-
                 //public ip
                 {
                     PublicIpAddress.Name = ResourceName $"{this.Name.Value}-publicip"
@@ -71,31 +113,6 @@ type RouteServerConfig =
                     AllocationMethod = PublicIpAddress.AllocationMethod.Static
                     DomainNameLabel = None
                     Tags = this.Tags
-                }
-
-                //subnet
-                {
-                    Subnet.Name = ResourceName "RouteServerSubnet"
-                    Prefix = IPAddressCidr.format this.SubnetPrefix
-                    VirtualNetwork = Some(vnetId)
-                    NetworkSecurityGroup = None
-                    Delegations = []
-                    NatGateway = None
-                    ServiceEndpoints = []
-                    AssociatedServiceEndpointPolicies = []
-                    PrivateEndpointNetworkPolicies = None
-                    PrivateLinkServiceNetworkPolicies = None
-                }
-
-                //ip configuration
-                {
-                    RouteServerIPConfig.Name = ResourceName $"{this.Name.Value}-ipconfig"
-                    RouteServer = Managed(routeServers.resourceId this.Name)
-                    PublicIpAddress = LinkedResource.Managed(publicIPAddresses.resourceId $"{this.Name.Value}-publicip")
-                    SubnetId =
-                        LinkedResource.Managed(
-                            subnets.resourceId (ResourceName vnetId.Name.Value, ResourceName "RouteServerSubnet")
-                        )
                 }
 
                 //route server
@@ -108,6 +125,7 @@ type RouteServerConfig =
                     HubRoutingPreference =
                         this.HubRoutingPreference
                         |> Option.defaultValue HubRoutingPreference.ExpressRoute
+                    Dependencies = this.Dependencies
                     Tags = this.Tags
                 }
 
@@ -137,12 +155,8 @@ type RouteServerBuilder() =
             AllowBranchToBranchTraffic = None
             HubRoutingPreference = None
             BGPConnections = []
-            VirtualNetwork = None
-            SubnetPrefix =
-                {
-                    Address = System.Net.IPAddress.Parse("10.0.100.0")
-                    Prefix = 16
-                }
+            SubnetScenario = None
+            Dependencies = Set.empty
             Tags = Map.empty
         }
 
@@ -172,21 +186,45 @@ type RouteServerBuilder() =
 
     [<CustomOperation "subnet_prefix">]
     member _.SubnetPrefix(state: RouteServerConfig, prefix) =
+        let prefix = IPAddressCidr.parse prefix
+        let subnetScenario =
+            match state.SubnetScenario with
+            | None -> AutoGenerate(None, Some prefix)
+            | Some(AutoGenerate(vnetId, _)) -> AutoGenerate(vnetId, Some prefix)
+            | Some(LinkedSubnet(_)) -> raiseFarmer "Cannot specify 'subnet_prefix' when linking to an existing subnet."
         { state with
-            SubnetPrefix = IPAddressCidr.parse prefix
+            SubnetScenario = Some subnetScenario
         }
 
     // linked to managed vnet created by Farmer and linked by user
     [<CustomOperation "link_to_vnet">]
     member _.LinkToVNetId(state: RouteServerConfig, vnetId: ResourceId) =
+        let subnetScenario =
+            match state.SubnetScenario with
+            | None -> AutoGenerate(Some(Unmanaged(vnetId)), None)
+            | Some(AutoGenerate(_, prefix)) -> AutoGenerate(Some(Unmanaged(vnetId)), prefix)
+            | Some(LinkedSubnet(_)) -> raiseFarmer "Cannot specify 'link_to_vnet' when linking to an existing subnet."
         { state with
-            VirtualNetwork = Some(Managed vnetId)
+            SubnetScenario = Some subnetScenario
         }
 
     // linked to external existing vnet
     member _.LinkToVNetId(state: RouteServerConfig, vnetName: string) =
+        let vnetId = virtualNetworks.resourceId (ResourceName vnetName)
+        let subnetScenario =
+            match state.SubnetScenario with
+            | None -> AutoGenerate(Some(Unmanaged(vnetId)), None)
+            | Some(AutoGenerate(_, prefix)) -> AutoGenerate(Some(Unmanaged(vnetId)), prefix)
+            | Some(LinkedSubnet(_)) -> raiseFarmer "Cannot specify 'link_to_vnet' when linking to an existing subnet."
         { state with
-            VirtualNetwork = Some(Unmanaged(virtualNetworks.resourceId (ResourceName vnetName)))
+            SubnetScenario = Some subnetScenario
+        }
+
+    // link to existing subnet
+    [<CustomOperation "link_to_subnet">]
+    member _.LinkToSubnet(state: RouteServerConfig, subnetId: ResourceId) =
+        { state with
+            SubnetScenario = Some (LinkedSubnet(Unmanaged subnetId))
         }
 
     interface ITaggable<RouteServerConfig> with
@@ -195,4 +233,10 @@ type RouteServerBuilder() =
                 Tags = state.Tags |> Map.merge tags
             }
 
+    interface IDependable<RouteServerConfig> with
+        /// Adds an explicit dependency to this Container App Environment.
+        member _.Add state newDeps =
+            { state with
+                Dependencies = state.Dependencies + newDeps
+            }
 let routeServer = RouteServerBuilder()

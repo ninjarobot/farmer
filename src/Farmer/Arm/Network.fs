@@ -169,6 +169,7 @@ type RouteServer =
         Sku: Sku
         AllowBranchToBranchTraffic: FeatureFlag
         HubRoutingPreference: HubRoutingPreference
+        Dependencies: Set<ResourceId>
         Tags: Map<string, string>
     }
 
@@ -183,7 +184,7 @@ type RouteServer =
         member this.ResourceId = routeServers.resourceId this.Name
 
         member this.JsonModel =
-            {| routeServers.Create(this.Name, this.Location, tags = this.Tags) with
+            {| routeServers.Create(this.Name, this.Location, dependsOn = this.Dependencies, tags = this.Tags) with
                 kind = "RouteServer"
                 properties = this.JsonModelProperties
             |}
