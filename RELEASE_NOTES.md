@@ -1,6 +1,9 @@
 Release Notes
 =============
 
+## 1.9.32
+* API Management: Add a builder for creating Azure API Management service resources.
+
 ## 1.9.31
 * Virtual Networks: Add `serviceEndpointPolicy` and `serviceEndpointPolicyDefinition` builders for Azure service endpoint policies, plus direct subnet association helpers.
 * Communication Services: Update `Microsoft.Communication/communicationServices` to the stable `2020-08-20` ARM API version instead of the retired preview API.
