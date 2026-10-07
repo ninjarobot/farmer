@@ -832,6 +832,14 @@ type WebAppConfig = {
                         SiteId = Managed this.ResourceId
                         ServicePlanId = Managed this.ServicePlanId
                         DomainName = customDomain
+                        KeyVaultId =
+                            match certOptions with
+                            | KeyVaultCertificate(keyVaultId, _) -> Some keyVaultId
+                            | _ -> None
+                        KeyVaultSecretName =
+                            match certOptions with
+                            | KeyVaultCertificate(_, keyVaultSecretName) -> Some keyVaultSecretName
+                            | _ -> None
                     }
 
                     // Get the resource group which contains the app service plan
@@ -873,6 +881,7 @@ type WebAppConfig = {
                                     match certOptions with
                                     | AppManagedCertificate -> SniBased(cert.GetThumbprintReference aspRgName)
                                     | CustomCertificate thumbprint -> SniBased thumbprint
+                                    | KeyVaultCertificate _ -> SniBased(cert.GetThumbprintReference aspRgName)
                         }
 
                         depends_on certificateDeployment.ResourceId
@@ -1108,6 +1117,12 @@ type WebAppBuilder() =
 
     member this.AddCustomDomain(state: WebAppConfig, (customDomain, thumbprint)) =
         this.AddCustomDomain(state, SecureDomain(customDomain, CustomCertificate thumbprint))
+
+    member this.AddCustomDomain(state: WebAppConfig, (customDomain, keyVaultId, keyVaultSecretName)) =
+        this.AddCustomDomain(state, SecureDomain(customDomain, KeyVaultCertificate(keyVaultId, keyVaultSecretName)))
+
+    member this.AddCustomDomain(state: WebAppConfig, (customDomain, keyVaultId: ResourceId, keyVaultSecretName)) =
+        this.AddCustomDomain(state, (customDomain, keyVaultId.ArmExpression, keyVaultSecretName))
 
     [<CustomOperation "custom_domains">]
     member this.AddCustomDomains(state, customDomains: string list) =

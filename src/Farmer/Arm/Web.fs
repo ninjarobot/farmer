@@ -558,6 +558,8 @@ type Certificate = {
     SiteId: LinkedResource
     ServicePlanId: LinkedResource
     DomainName: string
+    KeyVaultId: ArmExpression option
+    KeyVaultSecretName: string option
 } with
 
     member this.ResourceName = ResourceName this.DomainName
@@ -590,10 +592,20 @@ type Certificate = {
 
             {|
                 certificates.Create(this.ResourceName, this.Location, dependencies) with
-                    properties = {|
-                        serverFarmId = this.ServicePlanId.ResourceId.Eval()
-                        canonicalName = this.DomainName
-                    |}
+                    properties =
+                        match this.KeyVaultId, this.KeyVaultSecretName with
+                        | Some keyVaultId, Some keyVaultSecretName ->
+                            {|
+                                keyVaultId = keyVaultId.Eval()
+                                keyVaultSecretName = keyVaultSecretName
+                            |}
+                            :> obj
+                        | _ ->
+                            {|
+                                serverFarmId = this.ServicePlanId.ResourceId.Eval()
+                                canonicalName = this.DomainName
+                            |}
+                            :> obj
             |}
 
 [<AutoOpen>]

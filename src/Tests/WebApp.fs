@@ -1288,6 +1288,43 @@ let tests =
                 $"hostnameBinding should have a {innerExpectedSslState} Ssl state inside the resourceGroupDeployment template"
         }
 
+        test "Supports secure custom domains with a Key Vault certificate" {
+            let keyVaultId =
+                ArmExpression.literal "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.KeyVault/vaults/vault"
+
+            let keyVaultSecretName = "certificate-secret"
+
+            let resources =
+                webApp {
+                    name "test"
+                    custom_domain ("customDomain.io", keyVaultId, keyVaultSecretName)
+                }
+                |> getResources
+
+            let nested = resources |> getResource<ResourceGroupDeployment>
+            let cert = nested.[1].Resources |> getResource<Web.Certificate> |> List.head
+
+            Expect.equal cert.KeyVaultId (Some keyVaultId) "Certificate should reference the Key Vault"
+
+            Expect.equal
+                cert.KeyVaultSecretName
+                (Some keyVaultSecretName)
+                "Certificate should reference the Key Vault secret"
+
+            let bindingDeployment = nested.[2]
+
+            let binding =
+                bindingDeployment.Resources |> getResource<Web.HostNameBinding> |> List.head
+
+            match binding.SslState with
+            | SniBased thumbprint ->
+                Expect.stringContains
+                    thumbprint.Value
+                    "reference(resourceId('Microsoft.Web/certificates', 'customDomain.io')"
+                    "Key Vault certificate should be linked through its certificate resource"
+            | SslDisabled -> failtest "Key Vault certificate should enable SNI"
+        }
+
         test "Supports insecure custom domains" {
             let webappName = "test"
 

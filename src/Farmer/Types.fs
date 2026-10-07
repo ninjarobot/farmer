@@ -391,6 +391,7 @@ type ResourceRef<'TConfig> =
 type CertificateOptions =
     | AppManagedCertificate
     | CustomCertificate of thumbprint: ArmExpression
+    | KeyVaultCertificate of keyVaultId: ArmExpression * keyVaultSecretName: string
 
 type DomainConfig =
     | SecureDomain of domain: string * cert: CertificateOptions
