@@ -184,6 +184,7 @@
         <Compile Include="Builders/Builders.Maps.fs" />
         <Compile Include="Builders/Builders.SignalR.fs" />
         <Compile Include="Builders/Builders.VirtualNetworkGateway.fs" />
+        <Compile Include="Builders/Builders.LocalNetworkGateway.fs" />
         <Compile Include="Builders/Builders.EventGrid.fs" />
         <Compile Include="Builders/Builders.StaticWebApp.fs" />
         <Compile Include="Builders/Builders.Databricks.fs" />

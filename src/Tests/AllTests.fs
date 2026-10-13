@@ -81,6 +81,7 @@ let allTests =
             VirtualMachine.tests
             VmScaleSet.tests
             VirtualNetworkGateway.tests
+            LocalNetworkGateway.tests
             VirtualWan.tests
             WebApp.tests
             Dashboards.tests

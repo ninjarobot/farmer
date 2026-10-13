@@ -44,7 +44,7 @@ let virtualNetworkGateways =
     ResourceType("Microsoft.Network/virtualNetworkGateways", "2020-05-01")
 
 let localNetworkGateways =
-    ResourceType("Microsoft.Network/localNetworkGateways", "")
+    ResourceType("Microsoft.Network/localNetworkGateways", "2021-02-01")
 
 let natGateways = ResourceType("Microsoft.Network/natGateways", "2024-07-01")
 
@@ -703,6 +703,93 @@ type Connection = {
                             | None -> null
                     |}
             |}
+
+/// A BGP peering address with the IP configuration it applies to.
+type BgpPeeringAddress = {
+    /// Custom BGP peering IP addresses.
+    CustomPeeringAddress: string list
+
+    /// The IP configuration id this BGP peering applies to.
+    IpConfigurationId: string
+}
+
+/// BGP speaker settings for a local network gateway.
+type BgpSettings = {
+    /// The BGP speaker's ASN.
+    Asn: int
+
+    /// The BGP peering address and BGP identifier of this BGP speaker.
+    BgpPeeringAddress: string
+
+    /// BGP peering addresses with their IP configuration id.
+    BgpPeeringAddresses: BgpPeeringAddress list
+
+    /// The weight added to routes learned from this BGP speaker.
+    PeerWeight: int
+}
+
+/// A local network gateway resource (`Microsoft.Network/localNetworkGateways`).
+type LocalNetworkGateway = {
+    Name: ResourceName
+    Location: Location
+
+    /// BGP speaker settings for the gateway.
+    BgpSettings: BgpSettings option
+
+    /// The FQDN of the local network gateway.
+    Fqdn: string option
+
+    /// The IP address of the local network gateway.
+    GatewayIpAddress: System.Net.IPAddress option
+
+    /// The address prefixes of the local network site.
+    AddressSpacePrefixes: IPAddressCidr list
+
+    Tags: Map<string, string>
+} with
+
+    interface IArmResource with
+        member this.ResourceId = localNetworkGateways.resourceId this.Name
+
+        member this.JsonModel =
+            {|
+                localNetworkGateways.Create(this.Name, this.Location, tags = this.Tags)
+                with
+                    properties =
+                        {|
+                            bgpSettings =
+                                this.BgpSettings
+                                |> Option.map (fun settings ->
+                                    {|
+                                        asn = settings.Asn
+                                        bgpPeeringAddress = settings.BgpPeeringAddress
+                                        bgpPeeringAddresses =
+                                            [
+                                                for pa in settings.BgpPeeringAddresses do
+                                                    {
+                                                        customBgpIpAddresses = pa.CustomPeeringAddress
+                                                        ipconfigurationId = pa.IpConfigurationId
+                                                    }
+                                            ]
+                                        peerWeight = settings.PeerWeight
+                                    |})
+                                |> Option.toObj
+                            fqdn = this.Fqdn |> Option.toObj
+                            gatewayIpAddress =
+                                this.GatewayIpAddress
+                                |> Option.map (fun ip -> ip.ToString())
+                                |> Option.toObj
+                            localNetworkAddressSpace =
+                                {|
+                                    addressPrefixes =
+                                        [
+                                            for prefix in this.AddressSpacePrefixes do
+                                                IPAddressCidr.format prefix
+                                        ]
+                                |}
+                        |}
+            |}
+            :> _
 
 /// IP configuration for a network interface.
 type IpConfiguration = {
