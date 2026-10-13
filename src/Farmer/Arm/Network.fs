@@ -753,41 +753,33 @@ type LocalNetworkGateway = {
 
         member this.JsonModel =
             {|
-                localNetworkGateways.Create(this.Name, this.Location, tags = this.Tags)
-                with
-                    properties =
-                        {|
-                            bgpSettings =
-                                this.BgpSettings
-                                |> Option.map (fun settings ->
-                                    {|
-                                        asn = settings.Asn
-                                        bgpPeeringAddress = settings.BgpPeeringAddress
-                                        bgpPeeringAddresses =
-                                            [
-                                                for pa in settings.BgpPeeringAddresses do
-                                                    {
-                                                        customBgpIpAddresses = pa.CustomPeeringAddress
-                                                        ipconfigurationId = pa.IpConfigurationId
-                                                    }
-                                            ]
-                                        peerWeight = settings.PeerWeight
-                                    |})
-                                |> Option.toObj
-                            fqdn = this.Fqdn |> Option.toObj
-                            gatewayIpAddress =
-                                this.GatewayIpAddress
-                                |> Option.map (fun ip -> ip.ToString())
-                                |> Option.toObj
-                            localNetworkAddressSpace =
-                                {|
-                                    addressPrefixes =
-                                        [
-                                            for prefix in this.AddressSpacePrefixes do
-                                                IPAddressCidr.format prefix
-                                        ]
+                localNetworkGateways.Create(this.Name, this.Location, tags = this.Tags) with
+                    properties = {|
+                        bgpSettings =
+                            match this.BgpSettings with
+                            | Some settings ->
+                                box {|
+                                    asn = settings.Asn
+                                    bgpPeeringAddress = settings.BgpPeeringAddress
+                                    bgpPeeringAddresses = [
+                                        for pa in settings.BgpPeeringAddresses do
+                                            box {|
+                                                customBgpIpAddresses = pa.CustomPeeringAddress
+                                                ipconfigurationId = pa.IpConfigurationId
+                                            |}
+                                    ]
+                                    peerWeight = settings.PeerWeight
                                 |}
+                            | None -> null
+                        fqdn = this.Fqdn |> Option.toObj
+                        gatewayIpAddress = this.GatewayIpAddress |> Option.map (fun ip -> ip.ToString()) |> Option.toObj
+                        localNetworkAddressSpace = {|
+                            addressPrefixes = [
+                                for prefix in this.AddressSpacePrefixes do
+                                    IPAddressCidr.format prefix
+                            ]
                         |}
+                    |}
             |}
             :> _
 

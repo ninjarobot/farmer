@@ -1,6 +1,9 @@
 Release Notes
 =============
 
+## 1.9.34
+* Network: Add support for `Microsoft.Network/localNetworkGateways` with a new `localNetworkGateway` builder (BGP settings, FQDN, gateway IP address, and address space prefixes). See [#799](https://github.com/CompositionalIT/Farmer/issues/799).
+
 ## 1.9.33
 * SQL Azure: Add support for adding databases to existing SQL servers and elastic pools.
 * SQL Azure: Add support for virtual network rules on SQL servers.
