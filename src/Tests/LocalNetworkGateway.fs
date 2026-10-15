@@ -8,8 +8,7 @@ open Farmer.Builders
 open Newtonsoft.Json.Linq
 
 let tests =
-    testList "LocalNetworkGateway"
-    [
+    testList "LocalNetworkGateway" [
         test "Can create a basic localNetworkGateway" {
             let b =
                 localNetworkGateway {
