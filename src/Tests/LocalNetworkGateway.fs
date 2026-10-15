@@ -30,10 +30,9 @@ let tests =
             Expect.equal lng.Name.Value "lng" "Incorrect resource name"
             Expect.equal lng.Location Location.WestEurope "Incorrect location"
             Expect.isSome lng.GatewayIpAddress "GatewayIpAddress should be set"
-            Expect.equal
-                lng.GatewayIpAddress.Value.ToString()
-                "10.0.0.4"
-                "Incorrect gateway IP address"
+            match lng.GatewayIpAddress with
+            | Some ip -> Expect.equal (ip.ToString()) "10.0.0.4" "Incorrect gateway IP address"
+            | None -> failwith "Expected GatewayIpAddress to be set, but it was None"
             Expect.hasLength lng.AddressSpacePrefixes 1 "Incorrect address space count"
         }
 
@@ -51,37 +50,30 @@ let tests =
                 |> Writer.toJson
 
             let jobj = JObject.Parse json
-            let resource = jobj.SelectToken("resources[?(@.name=='lng')]")
+            let resource =
+                jobj.SelectToken("resources[?(@.name=='lng')]")
+                :?> JObject
+            let properties = (resource.Property "properties").Value :?> JObject
+            let addressSpace = (properties.Property "localNetworkAddressSpace").Value :?> JObject
+            let addressPrefixes = (addressSpace.Property "addressPrefixes").Value :?> JArray
 
             Expect.equal
-                resource.ToString(Newtonsoft.Json.Formatting.Indented).Trim()
-                resource.ToString(Newtonsoft.Json.Formatting.Indented).Trim()
-                "Sanity check the resource is present"
-
-            Expect.equal
-                resource("type").ToString()
+                (string (resource.Property "type").Value)
                 "Microsoft.Network/localNetworkGateways"
                 "Incorrect resource type"
-
             Expect.equal
-                resource("apiVersion").ToString()
+                (string (resource.Property "apiVersion").Value)
                 "2021-02-01"
                 "Incorrect API version"
-
             Expect.equal
-                resource("properties/gatewayIpAddress").ToString()
+                (string (properties.Property "gatewayIpAddress").Value)
                 "10.0.0.4"
                 "Incorrect gatewayIpAddress"
-
-            Expect.hasLength
-                (resource("properties/localNetworkAddressSpace/addressPrefixes") :?> JArray)
-                1
-                "Incorrect address space prefixes count"
-
+            Expect.hasLength addressPrefixes 1 "Incorrect address space prefixes count"
             Expect.equal
-                (resource("properties/localNetworkAddressSpace/addressPrefixes")[0].ToString())
-                "\"10.0.0.0/24\""
-                "Incorrect address space prefix formatting"
+                (string addressPrefixes.[0].Value)
+                "10.0.0.0/24"
+                "Incorrect address space prefix"
         }
 
         test "localNetworkGateway emits bgpSettings when configured" {
@@ -113,33 +105,36 @@ let tests =
                 |> Writer.toJson
 
             let jobj = JObject.Parse json
-            let resource = jobj.SelectToken("resources[?(@.name=='lng-bgp')]")
+            let resource =
+                jobj.SelectToken("resources[?(@.name=='lng-bgp')]")
+                :?> JObject
+            let properties = (resource.Property "properties").Value :?> JObject
+            let bgp = (properties.Property "bgpSettings").Value :?> JObject
+            let peeringAddresses = (bgp.Property "bgpPeeringAddresses").Value :?> JArray
+            let firstAddress = peeringAddresses.[0] :?> JObject
+            let customAddresses = (firstAddress.Property "customBgpIpAddresses").Value :?> JArray
 
             Expect.equal
-                resource("properties/bgpSettings/asn").ToString()
+                (string (bgp.Property "asn").Value)
                 "65010"
                 "Incorrect BGP ASN"
-
             Expect.equal
-                resource("properties/bgpSettings/bgpPeeringAddress").ToString()
-                "\"192.168.1.1\""
+                (string (bgp.Property "bgpPeeringAddress").Value)
+                "192.168.1.1"
                 "Incorrect BGP peering address"
-
             Expect.equal
-                resource("properties/bgpSettings/peerWeight").ToString()
+                (string (bgp.Property "peerWeight").Value)
                 "50"
                 "Incorrect BGP peer weight"
-
+            Expect.hasLength peeringAddresses 1 "Incorrect BGP peering addresses count"
             Expect.equal
-                resource("properties/bgpSettings/bgpPeeringAddresses/ipconfigurationId").ToString()
-                "\"ipconfig1\""
+                (string (firstAddress.Property "ipconfigurationId").Value)
+                "ipconfig1"
                 "Incorrect BGP peering IP configuration id"
-
-            Expect.hasLength
-                (resource(
-                    "properties/bgpSettings/bgpPeeringAddresses/customBgpIpAddresses"
-                ) :?> JArray)
-                1
-                "Incorrect BGP peering address count"
+            Expect.hasLength customAddresses 1 "Incorrect BGP peering address count"
+            Expect.equal
+                (string customAddresses.[0].Value)
+                "192.168.1.1"
+                "Incorrect BGP peering address"
         }
     ]
