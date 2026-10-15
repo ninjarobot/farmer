@@ -70,7 +70,7 @@ let tests =
                 "Incorrect gatewayIpAddress"
             Expect.hasLength addressPrefixes 1 "Incorrect address space prefixes count"
             Expect.equal
-                (string addressPrefixes.[0].Value)
+                (addressPrefixes.[0].Value<string>())
                 "10.0.0.0/24"
                 "Incorrect address space prefix"
         }
@@ -132,7 +132,7 @@ let tests =
                 "Incorrect BGP peering IP configuration id"
             Expect.hasLength customAddresses 1 "Incorrect BGP peering address count"
             Expect.equal
-                (string customAddresses.[0].Value)
+                (customAddresses.[0].Value<string>())
                 "192.168.1.1"
                 "Incorrect BGP peering address"
         }
